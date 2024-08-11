@@ -2,5 +2,5 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('', views.upload_pdf, name='upload_pdf'),  # Маршрут для загрузки PDF
+    path('', views.upload_file, name='upload_file'),  # Маршрут для загрузки PDF
 ]

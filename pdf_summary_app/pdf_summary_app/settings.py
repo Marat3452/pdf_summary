@@ -126,3 +126,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# settings.py
+from huggingface_hub import login
+
+# Аутентификация с Hugging Face
+login('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')

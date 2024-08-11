@@ -23,8 +23,6 @@ def extract_text_from_images(pdf_path):
     return text
 
 
-import json
-
 import requests
 import json
 
