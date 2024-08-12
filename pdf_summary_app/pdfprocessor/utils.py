@@ -2,6 +2,8 @@ import requests
 import PyPDF2
 from pdf2image import convert_from_path
 import pytesseract
+from docx import Document
+from io import BytesIO
 
 
 def extract_text_from_pdf(pdf_path):
@@ -21,47 +23,6 @@ def extract_text_from_images(pdf_path):
     for image in images:
         text += pytesseract.image_to_string(image)
     return text
-
-
-import requests
-import json
-
-
-def send_to_ollama(text):
-    """Отправка текста на Ollama и получение ответа."""
-    url = "http://localhost:11434/api/generate"  # Адрес Ollama API с вашим портом
-    headers = {"Content-Type": "application/json"}
-    data = {
-        "model": "llama3",  # Замените на нужную модель, поддерживаемую Ollama
-        "prompt": f"{text}"  # Просто отправляем текст без специального промта для проверки
-    }
-
-    response = requests.post(url, json=data, headers=headers)
-
-    try:
-        # Попытка распарсить текст ответа, который может быть разбит на несколько JSON-объектов
-        response_text = response.text.strip()
-        json_lines = response_text.splitlines()
-
-        # Собираем текст из всех частей ответа
-        full_response = ""
-        for line in json_lines:
-            try:
-                json_obj = json.loads(line)
-                if "response" in json_obj:
-                    full_response += json_obj["response"]
-            except json.JSONDecodeError:
-                continue
-
-        return full_response if full_response else "No summary returned"
-
-    except ValueError:
-        # Если декодирование JSON не удалось, возвращаем текст ошибки
-        return "Failed to decode response from Ollama."
-
-
-from docx import Document
-from io import BytesIO
 
 
 def create_summary_docx(summary):
