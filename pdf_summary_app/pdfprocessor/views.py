@@ -6,7 +6,6 @@ import pytesseract
 import os
 from PyPDF2 import PdfReader
 import camelot
-import requests
 import json
 import requests
 import uuid
@@ -89,14 +88,14 @@ def send_to_ollama(auth_token, user_message):
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
     payload = json.dumps({
-        "model": "GigaChat",
+        "model": "GigaChat:latest",
         "messages": [{"role": "user", "content": user_message}],
-        "temperature": 1,
-        "top_p": 0.1,
-        "n": 1,
+        # "temperature": 1,
+        # "top_p": 0.1,
+        # "n": 1,
         "stream": False,
-        "max_tokens": 512,
-        "repetition_penalty": 1,
+        # "max_tokens": 512,
+        # "repetition_penalty": 1,
         "update_interval": 0
     })
 
@@ -128,6 +127,7 @@ def upload_file(request):
 
         if filename.lower().endswith('.pdf'):
             extracted_text = extract_text_from_pdf(file_path)
+            print(extracted_text)
             extracted_tables = extract_tables_from_pdf(file_path)
         elif filename.lower().endswith(('.jpg', '.jpeg', '.png')):
             extracted_text = extract_text_from_image(file_path)
