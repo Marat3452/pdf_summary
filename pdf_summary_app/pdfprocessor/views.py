@@ -8,6 +8,12 @@ from PyPDF2 import PdfReader
 import camelot
 import requests
 import json
+import requests
+import uuid
+import base64
+
+CLIENT_ID = "e2a698cf-de31-4ff4-94b6-1b09ebbeb002"  # Замените на ваш Client ID
+CLIENT_SECRET = "664b5049-7c2d-419f-bdc5-20900531159f"  # Замените на ваш Client Secret
 
 
 def extract_text_from_pdf(pdf_path):
@@ -44,39 +50,75 @@ def save_text_to_docx(text, tables, docx_filename):
     return docx_filename
 
 
-def send_to_ollama(text):
-    """Отправка текста на Ollama и получение ответа."""
-    url = "http://localhost:11434/api/generate"  # Адрес Ollama API с вашим портом
-    headers = {"Content-Type": "application/json"}
-    data = {
-        "model": "llama3",  # Замените на нужную модель, поддерживаемую Ollama
-        "prompt": f"{text}"  # Просто отправляем текст без специального промта для проверки
+def get_gigachat_token():
+    """
+    Выполняет POST-запрос к эндпоинту, который выдает токен.
+    Возвращает токен доступа для использования с API GigaChat.
+    """
+    url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+    auth_string = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    auth_header = base64.b64encode(auth_string.encode()).decode()
+
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'RqUID': str(uuid.uuid4()),
+        'Authorization': f'Basic {auth_header}'
     }
 
-    response = requests.post(url, json=data, headers=headers)
+    payload = {
+        'scope': 'GIGACHAT_API_PERS'
+    }
 
     try:
-        # Попытка распарсить текст ответа, который может быть разбит на несколько JSON-объектов
-        response_text = response.text.strip()
-        json_lines = response_text.splitlines()
-
-        # Собираем текст из всех частей ответа
-        full_response = ""
-        for line in json_lines:
-            try:
-                json_obj = json.loads(line)
-                if "response" in json_obj:
-                    full_response += json_obj["response"]
-            except json.JSONDecodeError:
-                continue
-
-        return full_response if full_response else "No summary returned"
-
-    except ValueError:
-        # Если декодирование JSON не удалось, возвращаем текст ошибки
-        return "Failed to decode response from Ollama."
+        response = requests.post(url, headers=headers, data=payload, verify=False)
+        if response.status_code == 200:
+            return response.json().get('access_token')
+        else:
+            print(f"Ошибка получения токена: {response.status_code}, {response.text}")
+            return None
+    except requests.RequestException as e:
+        print(f"Ошибка: {str(e)}")
+        return None
 
 
+def send_to_ollama(auth_token, user_message):
+    """
+    Отправляет POST-запрос к API GigaChat для получения ответа от модели.
+    """
+    url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+
+    payload = json.dumps({
+        "model": "GigaChat",
+        "messages": [{"role": "user", "content": user_message}],
+        "temperature": 1,
+        "top_p": 0.1,
+        "n": 1,
+        "stream": False,
+        "max_tokens": 512,
+        "repetition_penalty": 1,
+        "update_interval": 0
+    })
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {auth_token}'.encode('utf-8').decode('latin-1')
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=payload, verify=False)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            print(f"Ошибка получения ответа: {response.status_code}, {response.text}")
+            return None
+    except requests.RequestException as e:
+        print(f"Произошла ошибка: {str(e)}")
+        return None
+
+
+# Включаем функции для авторизации и работы с GigaChat
 def upload_file(request):
     if request.method == 'POST' and request.FILES.get('file'):
         uploaded_file = request.FILES['file']
@@ -93,13 +135,18 @@ def upload_file(request):
         else:
             return JsonResponse({'error': 'Unsupported file format'}, status=400)
 
+        # Получение токена доступа от GigaChat
+        access_token = get_gigachat_token()
+        if not access_token:
+            return JsonResponse({'error': 'Не удалось получить токен доступа'}, status=500)
+
+        # Отправка текста в GigaChat для генерации ответа
+        summary_text = send_to_ollama(access_token, extracted_text)
+
         # Сохранение полного распознанного текста и таблиц в DOCX
         docx_filename = f"{os.path.splitext(filename)[0]}.docx"
         docx_file_path = os.path.join(fs.location, docx_filename)
         save_text_to_docx(extracted_text, extracted_tables, docx_file_path)
-
-        # Получение summary от модели Hugging Face с добавлением промта
-        summary_text = send_to_ollama(extracted_text)
 
         # Сохранение summary в DOCX
         summary_docx_filename = f"{os.path.splitext(filename)[0]}_summary.docx"

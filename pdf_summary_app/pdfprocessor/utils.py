@@ -1,4 +1,3 @@
-import requests
 import PyPDF2
 from pdf2image import convert_from_path
 import pytesseract
