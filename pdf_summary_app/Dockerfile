@@ -1,20 +1,22 @@
-# Используем официальный образ Python в качестве базового
-FROM python:3.9-slim
+# Используем официальный Python образ в качестве базового
+FROM python:3.11-slim
+
+# Устанавливаем переменные среды
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
 
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Копируем файл requirements.txt в контейнер
-COPY requirements.txt .
-
-# Устанавливаем зависимости
+# Копируем requirements.txt и устанавливаем зависимости
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем все остальные файлы проекта в контейнер
-COPY . .
+# Копируем содержимое вашего приложения в рабочую директорию
+COPY . /app/
 
-# Открываем порт для доступа к приложению
+# Открываем порт 8000 для взаимодействия с сервером
 EXPOSE 8000
 
-# Выполняем команду для запуска сервера Django
+# Запускаем Django сервер разработки
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

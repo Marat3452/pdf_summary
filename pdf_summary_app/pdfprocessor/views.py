@@ -10,9 +10,11 @@ import json
 import requests
 import uuid
 import base64
+import pandas as pd  # Добавить импорт pandas для работы с Excel
 
-CLIENT_ID = "e2a698cf-de31-4ff4-94b6-1b09ebbeb002"  # Замените на ваш Client ID
-CLIENT_SECRET = "664b5049-7c2d-419f-bdc5-20900531159f"  # Замените на ваш Client Secret
+
+CLIENT_ID = "e2a698cf-de31-4ff4-94b6-1b09ebbeb002"
+CLIENT_SECRET = "2b0e8ae9-b29e-413c-b2de-49d5a7a8d79e"
 
 
 def extract_text_from_pdf(pdf_path):
@@ -42,11 +44,34 @@ def save_text_to_docx(text, tables, docx_filename):
         # Добавление таблицы в DOCX
         doc_table = doc.add_table(rows=df.shape[0], cols=df.shape[1])
         for i, row in enumerate(df.itertuples()):
-            for j, cell in enumerate(row[1:]):  # Пропускаем индекс строки
+            for j, cell in enumerate(row[1:]):
                 doc_table.cell(i, j).text = str(cell)
 
     doc.save(docx_filename)
     return docx_filename
+
+
+def save_summary_to_excel(summary_data, excel_filename):
+    """
+    Сохранение краткого содержания в файл Excel
+    """
+    df = pd.DataFrame(summary_data)
+    df.to_excel(excel_filename, index=False)
+    return excel_filename
+
+
+def parse_summary_to_table(summary_text):
+    """
+    Преобразование текста в таблицу. Этот пример предполагает, что текст разделен по строкам и столбцам определенным образом.
+    Вы можете адаптировать его под свои нужды.
+    """
+    lines = summary_text.split('\n')
+    data = []
+    for line in lines:
+        if ':' in line:
+            param, description = line.split(':', 1)
+            data.append([param.strip(), description.strip()])
+    return pd.DataFrame(data, columns=["Parameter", "Description"])
 
 
 def get_gigachat_token():
@@ -87,16 +112,15 @@ def send_to_ollama(auth_token, user_message):
     """
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
+    # Добавляем промт перед исходным сообщением пользователя
+    prompt = "Вот мой текст,сделай краткое содержание по этому тексту в табличном виде. В таблице должны быть два столбца параметр и описание. К примеру в столбце параметр могут быть следующее: Наименование проекта, Адрес(-а) расположения защищенных объектов, Сроки выполнения проекта/ этапов проекта, Перечень выполняемых работ, Перечень требований по функциям проектируемой системы защиты информации, информация о объекте(-ах) защиты.\n\n"
+    user_message_with_prompt = prompt + user_message
+
     payload = json.dumps({
-        "model": "GigaChat:latest",
-        "messages": [{"role": "user", "content": user_message}],
-        # "temperature": 1,
-        # "top_p": 0.1,
-        # "n": 1,
-        "stream": False,
-        # "max_tokens": 512,
-        # "repetition_penalty": 1,
-        "update_interval": 0
+        "model": "GigaChat-Pro",
+        "messages": [{"role": "system", "content": user_message_with_prompt}],
+        # "stream": False,
+        # "update_interval": 0
     })
 
     headers = {
@@ -117,7 +141,6 @@ def send_to_ollama(auth_token, user_message):
         return None
 
 
-# Включаем функции для авторизации и работы с GigaChat
 def upload_file(request):
     if request.method == 'POST' and request.FILES.get('file'):
         uploaded_file = request.FILES['file']
@@ -127,7 +150,6 @@ def upload_file(request):
 
         if filename.lower().endswith('.pdf'):
             extracted_text = extract_text_from_pdf(file_path)
-            print(extracted_text)
             extracted_tables = extract_tables_from_pdf(file_path)
         elif filename.lower().endswith(('.jpg', '.jpeg', '.png')):
             extracted_text = extract_text_from_image(file_path)
@@ -143,21 +165,27 @@ def upload_file(request):
         # Отправка текста в GigaChat для генерации ответа
         summary_text = send_to_ollama(access_token, extracted_text)
 
+        # Преобразование текста в таблицу
+        summary_data = parse_summary_to_table(summary_text)
+
+        # Сохранение таблицы в Excel
+        excel_filename = f"{os.path.splitext(filename)[0]}_summary.xlsx"
+        excel_file_path = os.path.join(fs.location, excel_filename)
+        save_summary_to_excel(summary_data, excel_file_path)
+
         # Сохранение полного распознанного текста и таблиц в DOCX
         docx_filename = f"{os.path.splitext(filename)[0]}.docx"
         docx_file_path = os.path.join(fs.location, docx_filename)
         save_text_to_docx(extracted_text, extracted_tables, docx_file_path)
 
-        # Сохранение summary в DOCX
-        summary_docx_filename = f"{os.path.splitext(filename)[0]}_summary.docx"
-        summary_docx_file_path = os.path.join(fs.location, summary_docx_filename)
-        save_text_to_docx(summary_text, [], summary_docx_file_path)
+        # Форматирование таблицы для отображения в окне Summary
+        summary_html = summary_data.to_html(index=False)
 
         # Возврат пути к файлам
         response_data = {
-            'summary': summary_text,
+            'summary': summary_html,  # Отображаем таблицу в HTML
             'docx_url': fs.url(docx_filename),
-            'summary_docx_url': fs.url(summary_docx_file_path),
+            'summary_docx_url': fs.url(excel_file_path),  # URL для скачивания Excel файла
             'progress': 100
         }
         return JsonResponse(response_data)
