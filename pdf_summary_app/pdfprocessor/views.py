@@ -117,7 +117,7 @@ def send_to_ollama(auth_token, user_message):
     user_message_with_prompt = prompt + user_message
 
     payload = json.dumps({
-        "model": "GigaChat-Pro",
+        "model": "GigaChat",
         "messages": [{"role": "system", "content": user_message_with_prompt}],
         # "stream": False,
         # "update_interval": 0
@@ -185,7 +185,7 @@ def upload_file(request):
         response_data = {
             'summary': summary_html,  # Отображаем таблицу в HTML
             'docx_url': fs.url(docx_filename),
-            'summary_docx_url': fs.url(excel_file_path),  # URL для скачивания Excel файла
+            'summary_docx_url': fs.url(excel_filename),  # URL для скачивания Excel файла
             'progress': 100
         }
         return JsonResponse(response_data)
