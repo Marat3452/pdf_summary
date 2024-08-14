@@ -10,7 +10,6 @@ import json
 import requests
 import uuid
 import base64
-import pandas as pd  # Добавить импорт pandas для работы с Excel
 
 
 CLIENT_ID = "e2a698cf-de31-4ff4-94b6-1b09ebbeb002"
@@ -34,44 +33,14 @@ def extract_text_from_image(image_path):
     return pytesseract.image_to_string(image_path)
 
 
-def save_text_to_docx(text, tables, docx_filename):
+def save_text_to_docx(text, docx_filename):
+    """
+    Сохранение текста в файл DOCX
+    """
     doc = Document()
     doc.add_paragraph(text)
-
-    # Добавление таблиц в документ
-    for table in tables:
-        df = table.df  # Таблица в формате DataFrame
-        # Добавление таблицы в DOCX
-        doc_table = doc.add_table(rows=df.shape[0], cols=df.shape[1])
-        for i, row in enumerate(df.itertuples()):
-            for j, cell in enumerate(row[1:]):
-                doc_table.cell(i, j).text = str(cell)
-
     doc.save(docx_filename)
     return docx_filename
-
-
-def save_summary_to_excel(summary_data, excel_filename):
-    """
-    Сохранение краткого содержания в файл Excel
-    """
-    df = pd.DataFrame(summary_data)
-    df.to_excel(excel_filename, index=False)
-    return excel_filename
-
-
-def parse_summary_to_table(summary_text):
-    """
-    Преобразование текста в таблицу. Этот пример предполагает, что текст разделен по строкам и столбцам определенным образом.
-    Вы можете адаптировать его под свои нужды.
-    """
-    lines = summary_text.split('\n')
-    data = []
-    for line in lines:
-        if ':' in line:
-            param, description = line.split(':', 1)
-            data.append([param.strip(), description.strip()])
-    return pd.DataFrame(data, columns=["Parameter", "Description"])
 
 
 def get_gigachat_token():
@@ -113,11 +82,11 @@ def send_to_ollama(auth_token, user_message):
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
     # Добавляем промт перед исходным сообщением пользователя
-    prompt = "Вот мой текст,сделай краткое содержание по этому тексту в табличном виде. В таблице должны быть два столбца параметр и описание. К примеру в столбце параметр могут быть следующее: Наименование проекта, Адрес(-а) расположения защищенных объектов, Сроки выполнения проекта/ этапов проекта, Перечень выполняемых работ, Перечень требований по функциям проектируемой системы защиты информации, информация о объекте(-ах) защиты.\n\n"
+    prompt = "Give me back a summary of the text in markdown form. Give your answer in Russian.\n\n"
     user_message_with_prompt = prompt + user_message
 
     payload = json.dumps({
-        "model": "GigaChat",
+        "model": "GigaChat-Plus",
         "messages": [{"role": "system", "content": user_message_with_prompt}],
         # "stream": False,
         # "update_interval": 0
@@ -165,27 +134,24 @@ def upload_file(request):
         # Отправка текста в GigaChat для генерации ответа
         summary_text = send_to_ollama(access_token, extracted_text)
 
-        # Преобразование текста в таблицу
-        summary_data = parse_summary_to_table(summary_text)
-
-        # Сохранение таблицы в Excel
-        excel_filename = f"{os.path.splitext(filename)[0]}_summary.xlsx"
-        excel_file_path = os.path.join(fs.location, excel_filename)
-        save_summary_to_excel(summary_data, excel_file_path)
+        # Сохранение summary в DOCX
+        summary_docx_filename = f"{os.path.splitext(filename)[0]}_summary.docx"
+        summary_docx_file_path = os.path.join(fs.location, summary_docx_filename)
+        save_text_to_docx(summary_text, summary_docx_file_path)
 
         # Сохранение полного распознанного текста и таблиц в DOCX
         docx_filename = f"{os.path.splitext(filename)[0]}.docx"
         docx_file_path = os.path.join(fs.location, docx_filename)
-        save_text_to_docx(extracted_text, extracted_tables, docx_file_path)
+        save_text_to_docx(extracted_text, docx_file_path)
 
-        # Форматирование таблицы для отображения в окне Summary
-        summary_html = summary_data.to_html(index=False)
+        # Отображение текста summary в окне Summary
+        summary_html = summary_text.replace('\n', '<br>')  # Форматирование для HTML
 
         # Возврат пути к файлам
         response_data = {
-            'summary': summary_html,  # Отображаем таблицу в HTML
+            'summary': summary_html,  # Отображаем ответ от GigaChat в HTML
             'docx_url': fs.url(docx_filename),
-            'summary_docx_url': fs.url(excel_filename),  # URL для скачивания Excel файла
+            'summary_docx_url': fs.url(summary_docx_file_path),  # URL для скачивания DOCX файла с summary
             'progress': 100
         }
         return JsonResponse(response_data)
